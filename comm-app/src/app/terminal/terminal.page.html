@@ -1,0 +1,23 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>Terminal</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+
+  <div class="terminal">
+    <div *ngFor="let log of logs">
+      {{ log }}
+    </div>
+  </div>
+
+  <ion-item>
+    <ion-input [(ngModel)]="message" placeholder="Send data"></ion-input>
+  </ion-item>
+
+  <ion-button expand="block" (click)="send()">
+    Send
+  </ion-button>
+
+</ion-content>
