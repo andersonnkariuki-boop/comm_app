@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { Serial } from '../services/serial';
+import { Router } from '@angular/router';
 
-declare var window: any;
 
 @Component({
   selector: 'app-terminal',
@@ -11,64 +11,61 @@ declare var window: any;
 })
 export class TerminalPage implements OnInit {
   logs: string[] = [];
-  msg = '';
+  message = '';
   hex = false;
 
-  constructor(private serial: Serial) { }
+  private listener: any;
+
+  constructor(
+    private serial: Serial,
+    private router: Router
+  ) { }
 
   ngOnInit() {
-        // =============================
-    // RECEIVE SERIAL DATA
-    // =============================
-    this.serial.onData((payload: any) => {
 
-      const time =
-        new Date(payload.timestamp)
-          .toLocaleTimeString();
+    this.listener = (payload: any) => {
 
-      this.logs.push(
-        `[${time}] RX: ${payload.data}`
-      );
+      const time = new Date(payload.timestamp).toLocaleTimeString();
 
-      this.scrollTerminal();
-    });
+      this.logs.push(`[${time}] RX: ${payload.data}`);
+
+      setTimeout(() => this.autoScroll(), 50);
+    };
+
+    window.addEventListener('serialData', this.listener);
+
   }
 
-  // =============================
-  // SEND DATA
-  // =============================
-  async send() {
+  send() {
+    if (!this.message.trim()) return;
 
-    if (!this.msg.trim()) return;
+    const time = new Date().toLocaleTimeString();
 
-    this.logs.push(`TX: ${this.msg}`);
+    this.logs.push(`[${time}] TX: ${this.message}`);
 
-    await this.serial.send(this.msg);
+    this.serial.send(this.message);
 
-    this.msg = '';
+    this.message = '';
 
-    this.scrollTerminal();
-  }
-
-  // =============================
-  // AUTO SCROLL
-  // =============================
-  scrollTerminal() {
-
-    setTimeout(() => {
-
-      const el =
-        document.querySelector('.terminal');
-
-      if (el) {
-        el.scrollTop = el.scrollHeight;
-      }
-
-    }, 50);
+    setTimeout(() => this.autoScroll(), 50);
   }
 
   toggleHex() {
     this.hex = !this.hex;
   }
 
+  clear() {
+    this.logs = [];
+  }
+
+  autoScroll() {
+    const el = document.querySelector('.terminal');
+    el?.scrollTo(0, el.scrollHeight);
+  }
+
+  ngOnDestroy() {
+    if (this.listener) {
+      window.removeEventListener('serialData', this.listener);
+    }
+  }
 }

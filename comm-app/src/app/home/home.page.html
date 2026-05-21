@@ -1,31 +1,41 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>Serial Devices</ion-title>
+  </ion-toolbar>
+</ion-header>
+
 <ion-content class="ion-padding">
 
-  <ion-item>
-    <ion-label>Baudrate</ion-label>
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>Connection Setup</ion-card-title>
+    </ion-card-header>
 
-    <ion-select [(ngModel)]="baudrate">
+    <ion-card-content>
 
-      <ion-select-option [value]="9600">
-        9600
-      </ion-select-option>
+      <ion-item>
+        <ion-label>Baud Rate</ion-label>
+        <ion-select [(ngModel)]="selectedBaud">
+          <ion-select-option *ngFor="let b of baudRates" [value]="b">
+            {{ b }}
+          </ion-select-option>
+        </ion-select>
+      </ion-item>
 
-      <ion-select-option [value]="115200">
-        115200
-      </ion-select-option>
+      <ion-button expand="block" (click)="refresh()">
+        Refresh Device
+      </ion-button>
 
-      <ion-select-option [value]="921600">
-        921600
-      </ion-select-option>
+      <ion-button
+        expand="block"
+        color="primary"
+        (click)="connect()"
+        [disabled]="connecting"
+      >
+        {{ connecting ? 'Connecting...' : 'Connect USB Serial' }}
+      </ion-button>
 
-    </ion-select>
-  </ion-item>
-
-  <ion-button
-    expand="block"
-    (click)="connect()">
-
-    Connect Device
-
-  </ion-button>
+    </ion-card-content>
+  </ion-card>
 
 </ion-content>

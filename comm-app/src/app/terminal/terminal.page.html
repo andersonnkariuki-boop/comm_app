@@ -1,28 +1,35 @@
 <ion-header>
   <ion-toolbar>
-    <ion-title>Terminal</ion-title>
+    <ion-title>Serial Terminal</ion-title>
 
     <ion-buttons slot="end">
       <ion-button (click)="toggleHex()">
-        HEX
+        {{ hex ? 'HEX ON' : 'HEX OFF' }}
+      </ion-button>
+
+      <ion-button (click)="clear()">
+        Clear
       </ion-button>
     </ion-buttons>
 
   </ion-toolbar>
 </ion-header>
 
-<ion-content>
+<ion-content class="ion-padding">
 
   <div class="terminal">
 
-    <div *ngFor="let l of logs">
-      {{ l }}
+    <div *ngFor="let log of logs">
+      {{ log }}
     </div>
 
   </div>
 
   <ion-item>
-    <ion-input [(ngModel)]="msg"></ion-input>
+    <ion-input
+      [(ngModel)]="message"
+      placeholder="Type command..."
+    ></ion-input>
   </ion-item>
 
   <ion-button expand="block" (click)="send()">

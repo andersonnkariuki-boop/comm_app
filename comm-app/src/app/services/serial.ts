@@ -2,61 +2,130 @@ import { Injectable } from '@angular/core';
 
 declare var window: any;
 
+// =============================
+// TYPES (terminal-grade structure)
+// =============================
+export interface SerialPacket {
+  data?: string;
+  status?: string;
+  timestamp?: number;
+  type?: 'rx' | 'tx' | 'status';
+}
+
+type SerialCallback = (packet: SerialPacket) => void;
+
 @Injectable({
   providedIn: 'root',
 })
 export class Serial {
 
-  listeners: ((data: string) => void)[] = [];
+  // =============================
+  // INTERNAL STATE
+  // =============================
+
+  private listeners: Set<SerialCallback> = new Set();
+
+  private isInitialized = false;
+
+  // =============================
+  // INIT
+  // =============================
 
   constructor() {
-    this.initializeSerialListener();
+    this.initialize();
   }
 
-   // =============================
-  // RX LISTENER FROM ANDROID
   // =============================
-  private initializeSerialListener() {
+  // LISTENER FROM ANDROID
+  // =============================
 
+  private initialize() {
+
+    if (this.isInitialized) return;
+
+    this.isInitialized = true;
+
+    // RX DATA
     window.addEventListener('serialData', (event: any) => {
 
       try {
 
         const payload = JSON.parse(event.detail);
 
-        this.listeners.forEach(cb => cb(payload));
+        this.emit({
+          data: payload.data,
+          timestamp: payload.timestamp,
+          type: 'rx'
+        });
 
-      } catch (e) {
-        console.error('Serial Parse Error', e);
+      } catch (err) {
+        console.error('RX Parse Error', err);
+      }
+    });
+
+    // STATUS EVENTS (NEW)
+    window.addEventListener('serialStatus', (event: any) => {
+
+      try {
+
+        const payload = JSON.parse(event.detail);
+
+        this.emit({
+          status: payload.status,
+          type: 'status',
+          timestamp: Date.now()
+        });
+
+      } catch (err) {
+        console.error('Status Parse Error', err);
       }
     });
   }
 
   // =============================
-  // SUBSCRIBE TO DATA
+  // EMITTER (SAFE MULTI-SUBSCRIBER)
   // =============================
-  onData(callback: (data: any) => void) {
-    this.listeners.push(callback);
+
+  private emit(packet: SerialPacket) {
+
+    this.listeners.forEach(cb => {
+      try {
+        cb(packet);
+      } catch (e) {
+        console.error('Listener error', e);
+      }
+    });
   }
 
   // =============================
-  // SEND SERIAL DATA
+  // SUBSCRIBE
   // =============================
-  async send(message: string) {
+
+  onData(callback: SerialCallback): () => void {
+
+    this.listeners.add(callback);
+
+    // return unsubscribe function (IMPORTANT FIX)
+    return () => {
+      this.listeners.delete(callback);
+    };
+  }
+
+  // =============================
+  // SEND
+  // =============================
+
+  send(message: string) {
 
     try {
 
-      if ((window as any).SerialAndroid) {
-
-        (window as any).SerialAndroid.send(message);
-
+      if (window?.SerialAndroid?.send) {
+        window.SerialAndroid.send(message);
       } else {
-
-        console.error('SerialAndroid bridge not found');
+        console.error('SerialAndroid not available');
       }
 
     } catch (e) {
-
       console.error('Send Error', e);
     }
   }
@@ -64,18 +133,16 @@ export class Serial {
   // =============================
   // CONNECT
   // =============================
-  async connect(baudrate: number = 115200) {
+
+  connect(baudrate: number = 115200) {
 
     try {
 
-      if ((window as any).SerialAndroid) {
-
-        (window as any).SerialAndroid.connect(baudrate);
-
+      if (window?.SerialAndroid?.connect) {
+        window.SerialAndroid.connect(baudrate);
       }
 
     } catch (e) {
-
       console.error('Connect Error', e);
     }
   }
@@ -83,20 +150,26 @@ export class Serial {
   // =============================
   // DISCONNECT
   // =============================
-  async disconnect() {
+
+  disconnect() {
 
     try {
 
-      if ((window as any).SerialAndroid) {
-
-        (window as any).SerialAndroid.disconnect();
-
+      if (window?.SerialAndroid?.disconnect) {
+        window.SerialAndroid.disconnect();
       }
 
     } catch (e) {
-
       console.error('Disconnect Error', e);
     }
+  }
+
+  // =============================
+  // OPTIONAL UTILITY
+  // =============================
+
+  clearAllListeners() {
+    this.listeners.clear();
   }
 
 }
