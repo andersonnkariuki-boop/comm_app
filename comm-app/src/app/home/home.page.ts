@@ -1,5 +1,6 @@
 import { Component } from '@angular/core';
 import { Router } from '@angular/router';
+import { Serial } from '../services/serial';
 
 @Component({
   selector: 'app-home',
@@ -10,22 +11,18 @@ import { Router } from '@angular/router';
 
 export class HomePage {
 
-  devices: any[] = [];
+  baudrate = 115200;
 
-  constructor(private router: Router) { }
+  constructor(
+    private router: Router,
+    private serial: Serial
+  ) { }
 
-  refresh() {
-    // placeholder (Android will fill later)
-    this.devices = [
-      { name: 'STM32 Device' },
-      { name: 'Arduino UNO' }
-    ];
-  }
+   async connect() {
 
-  connect(device: any) {
-    this.router.navigate(['/terminal'], {
-      state: { device }
-    });
+    await this.serial.connect(this.baudrate);
+
+    this.router.navigate(['/terminal']);
   }
 
 }

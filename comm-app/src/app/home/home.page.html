@@ -1,19 +1,31 @@
-<ion-header>
-  <ion-toolbar>
-    <ion-title>USB Devices</ion-title>
-  </ion-toolbar>
-</ion-header>
-
 <ion-content class="ion-padding">
 
-  <ion-button expand="block" (click)="refresh()">
-    Refresh Devices
-  </ion-button>
+  <ion-item>
+    <ion-label>Baudrate</ion-label>
 
-  <ion-list>
-    <ion-item *ngFor="let d of devices" (click)="connect(d)">
-      {{ d.name }}
-    </ion-item>
-  </ion-list>
+    <ion-select [(ngModel)]="baudrate">
+
+      <ion-select-option [value]="9600">
+        9600
+      </ion-select-option>
+
+      <ion-select-option [value]="115200">
+        115200
+      </ion-select-option>
+
+      <ion-select-option [value]="921600">
+        921600
+      </ion-select-option>
+
+    </ion-select>
+  </ion-item>
+
+  <ion-button
+    expand="block"
+    (click)="connect()">
+
+    Connect Device
+
+  </ion-button>
 
 </ion-content>
