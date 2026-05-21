@@ -1,9 +1,22 @@
 .terminal {
-  background: #0b0f14;
-  color: #00ff9d;
-  font-family: monospace;
   height: 60vh;
   overflow-y: auto;
+  background: #0b0f14;
+  color: #00ff9c;
   padding: 10px;
+  font-family: monospace;
   border-radius: 8px;
+}
+
+.rx {
+  color: #00ff9c;
+}
+
+.tx {
+  color: #4da3ff;
+}
+
+.status {
+  color: #ffcc00;
+  font-weight: bold;
 }

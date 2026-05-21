@@ -1,254 +1,166 @@
 package com.comm.app;
 
 import android.app.PendingIntent;
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
-
-import android.hardware.usb.UsbDevice;
-import android.hardware.usb.UsbManager;
-
-import android.os.Build;
-import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-
+import android.content.*;
+import android.hardware.usb.*;
+import android.os.*;
 import android.util.Log;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.JSObject;
-
-import com.hoho.android.usbserial.driver.UsbSerialDriver;
-import com.hoho.android.usbserial.driver.UsbSerialPort;
-import com.hoho.android.usbserial.driver.UsbSerialProber;
+import com.hoho.android.usbserial.driver.*;
 
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 
 public class MainActivity extends BridgeActivity {
 
     private static final String TAG = "SERIAL_APP";
-    private static final String ACTION_USB_PERMISSION =
-            "com.comm.app.USB_PERMISSION";
+    private static final String ACTION_USB_PERMISSION = "com.comm.app.USB_PERMISSION";
 
     private UsbManager usbManager;
     private UsbSerialPort serialPort;
+    private UsbDevice connectedDevice;
 
     private Thread serialThread;
-    private volatile boolean serialRunning = false;
-
-    private UsbDevice connectedDevice;
+    private volatile boolean running = false;
 
     private int baudRate = 115200;
     private boolean hexMode = false;
 
-    private final StringBuilder rxBuffer = new StringBuilder();
+    // 🔥 NEW: line ending control
+    private String lineEnding = "none"; // none | lf | cr | crlf
 
-    // =====================================================
-    // ON CREATE
-    // =====================================================
+    private final StringBuilder buffer = new StringBuilder();
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-
         super.onCreate(savedInstanceState);
 
         usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
 
-        registerUsbReceiver();
+        registerReceiver(usbReceiver,
+                new IntentFilter(ACTION_USB_PERMISSION));
 
         bridge.getWebView().addJavascriptInterface(
                 new SerialBridge(),
                 "SerialAndroid"
         );
 
-        Log.d(TAG, "Serial bridge initialized");
-
         detectDevices();
     }
 
-    // =====================================================
-    // USB RECEIVER SAFE REGISTRATION
-    // =====================================================
-
-    private void registerUsbReceiver() {
-
-        IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            registerReceiver(usbReceiver, filter);
-        }
-    }
-
-    // =====================================================
-    // DEVICE DETECTION
-    // =====================================================
+    // ---------------- DEVICE DETECTION ----------------
 
     private void detectDevices() {
-
-        HashMap<String, UsbDevice> deviceList = usbManager.getDeviceList();
-
-        if (deviceList.isEmpty()) {
-            sendStatusToUI("No USB devices found");
-            return;
-        }
-
-        for (UsbDevice device : deviceList.values()) {
-            sendStatusToUI("Device: " + device.getDeviceName());
-            requestUsbPermission(device);
+        for (UsbDevice device : usbManager.getDeviceList().values()) {
+            requestPermission(device);
         }
     }
 
-    // =====================================================
-    // PERMISSION REQUEST
-    // =====================================================
-
-    private void requestUsbPermission(UsbDevice device) {
-
-        PendingIntent intent = PendingIntent.getBroadcast(
-                this,
-                0,
+    private void requestPermission(UsbDevice device) {
+        PendingIntent pi = PendingIntent.getBroadcast(
+                this, 0,
                 new Intent(ACTION_USB_PERMISSION),
                 PendingIntent.FLAG_IMMUTABLE
         );
 
-        usbManager.requestPermission(device, intent);
+        usbManager.requestPermission(device, pi);
     }
 
-    // =====================================================
-    // USB RECEIVER
-    // =====================================================
+    // ---------------- USB RECEIVER ----------------
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
-
         @Override
         public void onReceive(Context context, Intent intent) {
 
             if (!ACTION_USB_PERMISSION.equals(intent.getAction()))
                 return;
 
-            UsbDevice device =
-                    intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+            UsbDevice device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
 
-            boolean granted =
-                    intent.getBooleanExtra(
-                            UsbManager.EXTRA_PERMISSION_GRANTED,
-                            false
-                    );
-
-            if (granted && device != null) {
-
+            if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
                 connectedDevice = device;
-
-                sendStatusToUI("USB Permission Granted");
-
-                connectSerial(device, baudRate);
-
-            } else {
-                sendStatusToUI("USB Permission Denied");
+                connect(device);
             }
         }
     };
 
-    // =====================================================
-    // CONNECT SERIAL
-    // =====================================================
+    // ---------------- CONNECT ----------------
 
-    private void connectSerial(UsbDevice device, int baud) {
-
+    private void connect(UsbDevice device) {
         try {
-
             List<UsbSerialDriver> drivers =
                     UsbSerialProber.getDefaultProber()
                             .findAllDrivers(usbManager);
 
-            UsbSerialDriver selected = null;
+            UsbSerialDriver driver = null;
 
             for (UsbSerialDriver d : drivers) {
                 if (d.getDevice().getDeviceId() == device.getDeviceId()) {
-                    selected = d;
+                    driver = d;
                     break;
                 }
             }
 
-            if (selected == null) {
-                sendStatusToUI("No serial driver found");
-                return;
-            }
+            if (driver == null) return;
 
-            serialPort = selected.getPorts().get(0);
+            serialPort = driver.getPorts().get(0);
 
-            if (!serialPort.isOpen()) {
-                serialPort.open(usbManager.openDevice(selected.getDevice()));
-            }
-
+            serialPort.open(usbManager.openDevice(device));
             serialPort.setParameters(
-                    baud,
+                    baudRate,
                     8,
                     UsbSerialPort.STOPBITS_1,
                     UsbSerialPort.PARITY_NONE
             );
 
-            sendStatusToUI("Connected @ " + baud);
-
-            startSerialReader();
+            startReader();
 
         } catch (Exception e) {
-            sendStatusToUI("Connection error");
-            Log.e(TAG, "Connect Error: " + e.getMessage());
+            Log.e(TAG, "Connect error", e);
         }
     }
 
-    // =====================================================
-    // SERIAL READER (STABLE STREAM HANDLING)
-    // =====================================================
+    // ---------------- RX ----------------
 
-    private void startSerialReader() {
+    private void startReader() {
 
-        serialRunning = true;
+        running = true;
 
         serialThread = new Thread(() -> {
 
-            byte[] buffer = new byte[1024];
+            byte[] buf = new byte[1024];
 
-            while (serialRunning) {
-
+            while (running) {
                 try {
 
-                    if (serialPort == null) continue;
+                    int len = serialPort.read(buf, 1000);
+                    if (len <= 0) continue;
 
-                    int len = serialPort.read(buffer, 1000);
+                    String chunk = new String(buf, 0, len, StandardCharsets.UTF_8);
 
-                    if (len > 0) {
+                    // 🔥 CRLF NORMALIZATION (IMPORTANT)
+                    chunk = chunk.replace("\r\n", "\n");
 
-                        String chunk = new String(buffer, 0, len, StandardCharsets.UTF_8);
+                    buffer.append(chunk);
 
-                        rxBuffer.append(chunk);
+                    String data = buffer.toString();
+                    int index;
 
-                        String data = rxBuffer.toString();
+                    while ((index = data.indexOf("\n")) != -1) {
 
-                        int index;
+                        String line = data.substring(0, index);
+                        data = data.substring(index + 1);
 
-                        while ((index = findLineBreak(data)) != -1) {
-
-                            String line = data.substring(0, index);
-
-                            data = data.substring(index + 1);
-
-                            sendToUI(line.trim());
-                        }
-
-                        rxBuffer.setLength(0);
-                        rxBuffer.append(data);
+                        sendToUI(line.trim());
                     }
 
+                    buffer.setLength(0);
+                    buffer.append(data);
+
                 } catch (Exception e) {
-                    Log.e(TAG, "RX Error: " + e.getMessage());
-                    serialRunning = false;
+                    running = false;
                 }
             }
         });
@@ -256,90 +168,54 @@ public class MainActivity extends BridgeActivity {
         serialThread.start();
     }
 
-    private int findLineBreak(String data) {
+    // ---------------- TX ----------------
 
-        int n = data.indexOf("\n");
-        if (n != -1) return n;
-
-        int r = data.indexOf("\r");
-        if (r != -1) return r;
-
-        return -1;
-    }
-
-    // =====================================================
-    // SEND SERIAL
-    // =====================================================
-
-    public void sendSerial(String message) {
-
+    public void sendSerial(String msg) {
         try {
+            if (serialPort == null) return;
 
-            if (serialPort == null) {
-                sendStatusToUI("No connection");
-                return;
+            String finalMsg = msg;
+
+            switch (lineEnding) {
+                case "lf": finalMsg += "\n"; break;
+                case "cr": finalMsg += "\r"; break;
+                case "crlf": finalMsg += "\r\n"; break;
             }
 
             byte[] data = hexMode
-                    ? hexStringToByteArray(message)
-                    : message.getBytes(StandardCharsets.UTF_8);
+                    ? hexToBytes(finalMsg)
+                    : finalMsg.getBytes(StandardCharsets.UTF_8);
 
             serialPort.write(data, 1000);
 
         } catch (Exception e) {
-            sendStatusToUI("Write error");
-            Log.e(TAG, e.getMessage());
+            Log.e(TAG, "TX error", e);
         }
     }
 
-    // =====================================================
-    // UI EVENTS
-    // =====================================================
+    // ---------------- UI EVENTS ----------------
 
     private void sendToUI(String data) {
-
         JSObject obj = new JSObject();
         obj.put("data", data);
         obj.put("timestamp", System.currentTimeMillis());
 
-        getBridge().triggerWindowJSEvent(
-                "serialData",
-                obj.toString()
-        );
+        getBridge().triggerWindowJSEvent("serialData", obj.toString());
     }
 
-    private void sendStatusToUI(String status) {
-
-        JSObject obj = new JSObject();
-        obj.put("status", status);
-
-        getBridge().triggerWindowJSEvent(
-                "serialStatus",
-                obj.toString()
-        );
-    }
-
-    // =====================================================
-    // HEX
-    // =====================================================
-
-    private byte[] hexStringToByteArray(String s) {
-
+    private byte[] hexToBytes(String s) {
         int len = s.length();
-        byte[] data = new byte[len / 2];
+        byte[] out = new byte[len / 2];
 
         for (int i = 0; i < len; i += 2) {
-            data[i / 2] =
+            out[i / 2] =
                     (byte) ((Character.digit(s.charAt(i), 16) << 4)
                             + Character.digit(s.charAt(i + 1), 16));
         }
-
-        return data;
+        return out;
     }
 
-    // =====================================================
-    // JS BRIDGE
-    // =====================================================
+    // ---------------- BRIDGE ----------------
 
     public class SerialBridge {
 
@@ -348,43 +224,25 @@ public class MainActivity extends BridgeActivity {
                     .post(() -> sendSerial(msg));
         }
 
-        public void connect(int baud) {
+        public void setBaud(int baud) {
             baudRate = baud;
-
-            if (connectedDevice != null) {
-                connectSerial(connectedDevice, baudRate);
-            }
         }
 
         public void setHex(boolean value) {
             hexMode = value;
         }
 
-        public void disconnect() {
-            serialRunning = false;
-
-            try {
-                if (serialPort != null) {
-                    serialPort.close();
-                    serialPort = null;
-                }
-            } catch (Exception ignored) {}
+        public void setLineEnding(String mode) {
+            lineEnding = mode;
         }
     }
 
-    // =====================================================
-    // CLEANUP
-    // =====================================================
-
     @Override
     public void onDestroy() {
-
-        super.onDestroy();
-
-        serialRunning = false;
-
+        running = false;
         try {
             unregisterReceiver(usbReceiver);
         } catch (Exception ignored) {}
+        super.onDestroy();
     }
 }

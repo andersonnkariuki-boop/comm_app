@@ -3,13 +3,25 @@
     <ion-title>Serial Terminal</ion-title>
 
     <ion-buttons slot="end">
+
+      <!-- HEX MODE -->
       <ion-button (click)="toggleHex()">
         {{ hex ? 'HEX ON' : 'HEX OFF' }}
       </ion-button>
 
+      <!-- LINE ENDING SELECTOR -->
+      <ion-select [(ngModel)]="lineEnding" (ionChange)="updateLineEnding()" interface="popover">
+        <ion-select-option value="none">None</ion-select-option>
+        <ion-select-option value="lf">LF</ion-select-option>
+        <ion-select-option value="cr">CR</ion-select-option>
+        <ion-select-option value="crlf">CRLF</ion-select-option>
+      </ion-select>
+
+      <!-- CLEAR -->
       <ion-button (click)="clear()">
         Clear
       </ion-button>
+
     </ion-buttons>
 
   </ion-toolbar>
@@ -17,18 +29,40 @@
 
 <ion-content class="ion-padding">
 
+  <!-- =========================
+       TERMINAL WINDOW
+  ========================== -->
   <div class="terminal">
 
     <div *ngFor="let log of logs">
-      {{ log }}
+
+      <!-- RX -->
+      <div *ngIf="log.includes('RX')" class="rx">
+        {{ log }}
+      </div>
+
+      <!-- TX -->
+      <div *ngIf="log.includes('TX')" class="tx">
+        {{ log }}
+      </div>
+
+      <!-- STATUS -->
+      <div *ngIf="log.includes('STATUS')" class="status">
+        {{ log }}
+      </div>
+
     </div>
 
   </div>
 
+  <!-- =========================
+       INPUT AREA
+  ========================== -->
   <ion-item>
     <ion-input
       [(ngModel)]="message"
       placeholder="Type command..."
+      (keyup.enter)="send()"
     ></ion-input>
   </ion-item>
 

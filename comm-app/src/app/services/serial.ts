@@ -3,13 +3,13 @@ import { Injectable } from '@angular/core';
 declare var window: any;
 
 // =============================
-// TYPES (terminal-grade structure)
+// TYPES (industrial terminal-grade)
 // =============================
 export interface SerialPacket {
   data?: string;
   status?: string;
   timestamp?: number;
-  type?: 'rx' | 'tx' | 'status';
+  type: 'rx' | 'tx' | 'status';
 }
 
 type SerialCallback = (packet: SerialPacket) => void;
@@ -24,7 +24,6 @@ export class Serial {
   // =============================
 
   private listeners: Set<SerialCallback> = new Set();
-
   private isInitialized = false;
 
   // =============================
@@ -35,22 +34,25 @@ export class Serial {
     this.initialize();
   }
 
-  // =============================
-  // LISTENER FROM ANDROID
-  // =============================
-
   private initialize() {
 
     if (this.isInitialized) return;
-
     this.isInitialized = true;
 
-    // RX DATA
+    // =============================
+    // RX DATA FROM ANDROID
+    // =============================
     window.addEventListener('serialData', (event: any) => {
 
       try {
 
-        const payload = JSON.parse(event.detail);
+        // 🔥 FIX: Capacitor sends JSON string in event.detail OR event itself
+        const raw = event?.detail || event;
+
+        const payload =
+          typeof raw === 'string'
+            ? JSON.parse(raw)
+            : raw;
 
         this.emit({
           data: payload.data,
@@ -63,12 +65,19 @@ export class Serial {
       }
     });
 
-    // STATUS EVENTS (NEW)
+    // =============================
+    // STATUS EVENTS
+    // =============================
     window.addEventListener('serialStatus', (event: any) => {
 
       try {
 
-        const payload = JSON.parse(event.detail);
+        const raw = event?.detail || event;
+
+        const payload =
+          typeof raw === 'string'
+            ? JSON.parse(raw)
+            : raw;
 
         this.emit({
           status: payload.status,
@@ -83,7 +92,7 @@ export class Serial {
   }
 
   // =============================
-  // EMITTER (SAFE MULTI-SUBSCRIBER)
+  // EMITTER
   // =============================
 
   private emit(packet: SerialPacket) {
@@ -105,25 +114,20 @@ export class Serial {
 
     this.listeners.add(callback);
 
-    // return unsubscribe function (IMPORTANT FIX)
     return () => {
       this.listeners.delete(callback);
     };
   }
 
   // =============================
-  // SEND
+  // SEND DATA
   // =============================
 
   send(message: string) {
 
     try {
 
-      if (window?.SerialAndroid?.send) {
-        window.SerialAndroid.send(message);
-      } else {
-        console.error('SerialAndroid not available');
-      }
+      window?.SerialAndroid?.send?.(message);
 
     } catch (e) {
       console.error('Send Error', e);
@@ -138,12 +142,40 @@ export class Serial {
 
     try {
 
-      if (window?.SerialAndroid?.connect) {
-        window.SerialAndroid.connect(baudrate);
-      }
+      window?.SerialAndroid?.connect?.(baudrate);
 
     } catch (e) {
       console.error('Connect Error', e);
+    }
+  }
+
+  // =============================
+  // HEX MODE
+  // =============================
+
+  setHex(enabled: boolean) {
+
+    try {
+
+      window?.SerialAndroid?.setHex?.(enabled);
+
+    } catch (e) {
+      console.error('Hex Mode Error', e);
+    }
+  }
+
+  // =============================
+  // LINE ENDING CONTROL (NEW)
+  // =============================
+
+  setLineEnding(mode: 'none' | 'lf' | 'cr' | 'crlf') {
+
+    try {
+
+      window?.SerialAndroid?.setLineEnding?.(mode);
+
+    } catch (e) {
+      console.error('Line Ending Error', e);
     }
   }
 
@@ -155,9 +187,7 @@ export class Serial {
 
     try {
 
-      if (window?.SerialAndroid?.disconnect) {
-        window.SerialAndroid.disconnect();
-      }
+      window?.SerialAndroid?.disconnect?.();
 
     } catch (e) {
       console.error('Disconnect Error', e);
@@ -165,11 +195,10 @@ export class Serial {
   }
 
   // =============================
-  // OPTIONAL UTILITY
+  // UTIL
   // =============================
 
   clearAllListeners() {
     this.listeners.clear();
   }
-
 }

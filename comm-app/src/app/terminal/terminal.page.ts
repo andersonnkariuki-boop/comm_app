@@ -1,7 +1,6 @@
-import { Component, OnInit } from '@angular/core';
-import { Serial } from '../services/serial';
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Serial, SerialPacket } from '../services/serial';
 import { Router } from '@angular/router';
-
 
 @Component({
   selector: 'app-terminal',
@@ -9,34 +8,55 @@ import { Router } from '@angular/router';
   styleUrls: ['./terminal.page.scss'],
   standalone: false,
 })
-export class TerminalPage implements OnInit {
+export class TerminalPage implements OnInit, OnDestroy {
+
   logs: string[] = [];
   message = '';
+
   hex = false;
 
-  private listener: any;
+  lineEnding: 'none' | 'lf' | 'cr' | 'crlf' = 'none';
+
+  private unsubscribe?: () => void;
 
   constructor(
     private serial: Serial,
     private router: Router
-  ) { }
+  ) {}
 
+  // =============================
+  // INIT
+  // =============================
   ngOnInit() {
 
-    this.listener = (payload: any) => {
+    this.unsubscribe = this.serial.onData((packet: SerialPacket) => {
 
-      const time = new Date(payload.timestamp).toLocaleTimeString();
+      const time = new Date(packet.timestamp || Date.now())
+        .toLocaleTimeString();
 
-      this.logs.push(`[${time}] RX: ${payload.data}`);
+      // =============================
+      // RX
+      // =============================
+      if (packet.type === 'rx' && packet.data) {
+        this.logs.push(`[${time}] RX: ${packet.data}`);
+      }
 
-      setTimeout(() => this.autoScroll(), 50);
-    };
+      // =============================
+      // STATUS
+      // =============================
+      if (packet.type === 'status' && packet.status) {
+        this.logs.push(`[${time}] STATUS: ${packet.status}`);
+      }
 
-    window.addEventListener('serialData', this.listener);
-
+      this.autoScroll();
+    });
   }
 
+  // =============================
+  // SEND
+  // =============================
   send() {
+
     if (!this.message.trim()) return;
 
     const time = new Date().toLocaleTimeString();
@@ -47,25 +67,56 @@ export class TerminalPage implements OnInit {
 
     this.message = '';
 
-    setTimeout(() => this.autoScroll(), 50);
+    this.autoScroll();
   }
 
+  // =============================
+  // HEX TOGGLE
+  // =============================
   toggleHex() {
+
     this.hex = !this.hex;
+
+    this.serial.setHex(this.hex);
   }
 
+  // =============================
+  // LINE ENDING
+  // =============================
+  updateLineEnding() {
+    this.serial.setLineEnding(this.lineEnding);
+  }
+
+  // =============================
+  // CLEAR TERMINAL
+  // =============================
   clear() {
     this.logs = [];
   }
 
+  // =============================
+  // AUTO SCROLL (SMOOTH + STABLE)
+  // =============================
   autoScroll() {
-    const el = document.querySelector('.terminal');
-    el?.scrollTo(0, el.scrollHeight);
+
+    requestAnimationFrame(() => {
+
+      const el = document.querySelector('.terminal');
+
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+      }
+
+    });
   }
 
+  // =============================
+  // CLEANUP
+  // =============================
   ngOnDestroy() {
-    if (this.listener) {
-      window.removeEventListener('serialData', this.listener);
+
+    if (this.unsubscribe) {
+      this.unsubscribe();
     }
   }
 }
